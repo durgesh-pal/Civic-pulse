@@ -1,0 +1,6 @@
+{
+  "name": "SIH25031 CivicPulse - Civic Issue Reporting & Resolution System",
+  "description": "Enterprise-grade Crowdsourced Civic Issue Reporting and Resolution Platform with AI verification, SLA tracking, duplicate detection, interactive Leaflet mapping, role-based citizen, authority, and field worker workflows.",
+  "requestFramePermissions": ["geolocation", "camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

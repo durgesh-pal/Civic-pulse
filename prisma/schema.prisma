@@ -1,0 +1,311 @@
+// Prisma Schema for SIH25031 CivicPulse Civic Issue Reporting & Resolution System
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  CITIZEN
+  AUTHORITY
+  FIELD_WORKER
+  ADMIN
+}
+
+enum IssueCategory {
+  ROAD_DAMAGE
+  GARBAGE
+  STREET_LIGHT
+  WATER_LEAKAGE
+  DRAINAGE
+  TRAFFIC
+  PUBLIC_SANITATION
+  FALLEN_TREES
+  PUBLIC_SAFETY
+  OTHER
+}
+
+enum IssueStatus {
+  SUBMITTED
+  UNDER_REVIEW
+  VERIFIED
+  ASSIGNED
+  IN_PROGRESS
+  RESOLVED
+  REJECTED
+}
+
+enum IssuePriority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+model User {
+  id               String              @id @default(uuid())
+  email            String              @unique
+  passwordHash     String
+  name             String
+  phone            String?
+  role             Role                @default(CITIZEN)
+  avatar           String?
+  isActive         Boolean             @default(true)
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+
+  citizenProfile   CitizenProfile?
+  authorityProfile AuthorityProfile?
+  workerProfile    FieldWorkerProfile?
+
+  reportedIssues   Issue[]             @relation("ReportedIssues")
+  assignedIssues   Assignment[]        @relation("WorkerAssignments")
+  comments         IssueComment[]
+  upvotes          IssueUpvote[]
+  notifications    Notification[]
+  auditLogs        AuditLog[]
+  feedbacks        Feedback[]
+}
+
+model CitizenProfile {
+  id              String   @id @default(uuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  civicScore      Int      @default(0)
+  badge           String   @default("Civic Explorer")
+  homeAddress     String?
+  reportsCount    Int      @default(0)
+  resolvedCount   Int      @default(0)
+}
+
+model AuthorityProfile {
+  id             String      @id @default(uuid())
+  userId         String      @unique
+  user           User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  departmentId   String?
+  department     Department? @relation(fields: [departmentId], references: [id])
+  designation    String      @default("Civic Officer")
+  jurisdiction   String      @default("Zone 1")
+}
+
+model FieldWorkerProfile {
+  id             String      @id @default(uuid())
+  userId         String      @unique
+  user           User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  departmentId   String
+  department     Department  @relation(fields: [departmentId], references: [id])
+  skills         String[]
+  assignedZone   String
+  activeTaskCount Int        @default(0)
+  completedCount  Int        @default(0)
+  rating         Float       @default(5.0)
+}
+
+model Department {
+  id               String               @id @default(uuid())
+  code             String               @unique
+  name             String
+  headName         String
+  email            String
+  phone            String
+  color            String               @default("#2563eb")
+  authorities      AuthorityProfile[]
+  fieldWorkers     FieldWorkerProfile[]
+  issues           Issue[]
+  createdAt        DateTime             @default(now())
+}
+
+model Issue {
+  id                 String               @id @default(uuid())
+  ticketNumber       String               @unique // e.g. CIV-2026-00124
+  title              String
+  description        String
+  category           IssueCategory
+  status             IssueStatus          @default(SUBMITTED)
+  priority           IssuePriority        @default(MEDIUM)
+  
+  reporterId         String
+  reporter           User                 @relation("ReportedIssues", fields: [reporterId], references: [id])
+  
+  departmentId       String?
+  department         Department?          @relation(fields: [departmentId], references: [id])
+  
+  isFlaggedSpam      Boolean              @default(false)
+  spamReason         String?
+
+  upvoteCount        Int                  @default(0)
+  duplicateCount     Int                  @default(0)
+  duplicateOfId      String?
+  
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  resolvedAt         DateTime?
+
+  location           IssueLocation?
+  images             IssueImage[]
+  aiAnalysis         AIAnalysis?
+  priorityScore      PriorityScore?
+  sla                SLA?
+  assignments        Assignment[]
+  statusHistory      IssueStatusHistory[]
+  comments           IssueComment[]
+  upvotes            IssueUpvote[]
+  feedback           Feedback?
+
+  @@index([status])
+  @@index([category])
+  @@index([priority])
+  @@index([departmentId])
+  @@index([reporterId])
+}
+
+model IssueLocation {
+  id           String   @id @default(uuid())
+  issueId      String   @unique
+  issue        Issue    @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  address      String
+  landmark     String?
+  city         String
+  state        String
+  pincode      String
+  latitude     Float
+  longitude    Float
+
+  @@index([latitude, longitude])
+}
+
+model IssueImage {
+  id          String   @id @default(uuid())
+  issueId     String
+  issue       Issue    @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  url         String
+  imageType   String   @default("BEFORE") // BEFORE, PROGRESS, AFTER
+  caption     String?
+  uploadedAt  DateTime @default(now())
+}
+
+model AIAnalysis {
+  id                  String        @id @default(uuid())
+  issueId             String        @unique
+  issue               Issue         @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  detectedCategory    String
+  detectedProblem     String
+  confidenceScore     Float
+  detectedSeverity    String
+  suggestedPriority   IssuePriority
+  generatedSummary    String
+  safetyHazards       String[]
+  processedAt         DateTime      @default(now())
+}
+
+model PriorityScore {
+  id                  String        @id @default(uuid())
+  issueId             String        @unique
+  issue               Issue         @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  totalScore          Float
+  severityPoints      Float         // Max 30
+  publicImpactPoints  Float         // Max 25
+  urgencyPoints       Float         // Max 20
+  affectedCitizensPts Float         // Max 15
+  agePoints           Float         // Max 10
+  calculatedAt        DateTime      @default(now())
+}
+
+model SLA {
+  id                  String        @id @default(uuid())
+  issueId             String        @unique
+  issue               Issue         @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  allocatedHours      Int
+  deadline            DateTime
+  isBreached          Boolean       @default(false)
+  breachedAt          DateTime?
+}
+
+model Assignment {
+  id                  String        @id @default(uuid())
+  issueId             String
+  issue               Issue         @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  workerId            String
+  worker              User          @relation("WorkerAssignments", fields: [workerId], references: [id])
+  assignedBy          String
+  status              String        @default("PENDING") // PENDING, IN_PROGRESS, COMPLETED
+  assignedAt          DateTime      @default(now())
+  startedAt           DateTime?
+  completedAt         DateTime?
+  resolutionNotes     String?
+  afterImageUrl       String?
+}
+
+model IssueStatusHistory {
+  id                  String        @id @default(uuid())
+  issueId             String
+  issue               Issue         @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  previousStatus      IssueStatus?
+  newStatus           IssueStatus
+  changedById         String
+  changedByName       String
+  remarks             String?
+  timestamp           DateTime      @default(now())
+}
+
+model IssueComment {
+  id                  String        @id @default(uuid())
+  issueId             String
+  issue               Issue         @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  userId              String
+  user                User          @relation(fields: [userId], references: [id])
+  message             String
+  isInternalOnly      Boolean       @default(false)
+  createdAt           DateTime      @default(now())
+}
+
+model IssueUpvote {
+  id                  String        @id @default(uuid())
+  issueId             String
+  issue               Issue         @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  userId              String
+  user                User          @relation(fields: [userId], references: [id])
+  createdAt           DateTime      @default(now())
+
+  @@unique([issueId, userId])
+}
+
+model Feedback {
+  id                  String        @id @default(uuid())
+  issueId             String        @unique
+  issue               Issue         @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  userId              String
+  user                User          @relation(fields: [userId], references: [id])
+  rating              Int           // 1 to 5
+  comment             String?
+  confirmedResolved   Boolean       @default(true)
+  createdAt           DateTime      @default(now())
+}
+
+model Notification {
+  id                  String        @id @default(uuid())
+  userId              String
+  user                User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title               String
+  message             String
+  notificationType    String
+  issueId             String?
+  ticketNumber        String?
+  isRead              Boolean       @default(false)
+  createdAt           DateTime      @default(now())
+}
+
+model AuditLog {
+  id                  String        @id @default(uuid())
+  userId              String?
+  user                User?         @relation(fields: [userId], references: [id])
+  action              String
+  entityType          String
+  entityId            String?
+  details             String?
+  ipAddress           String?
+  createdAt           DateTime      @default(now())
+}
